@@ -1,7 +1,18 @@
 unit class Build;
 
+my sub ldconfig-p {
+    try run('/sbin/ldconfig', '-p', :out, :!err).out.lines(:close)
+        .grep(/^\h/)
+        .map: {
+            /^\h+ $<name>=(\H+) .+ \=\> \h+ $<path>=(\H+)/;
+            $<name>.Str => $<path>.Str
+        }
+}
+
 method build($cwd --> Bool) {
-    my %libraries = ssl => 'ssl', crypto => 'crypto';
+    my %libraries =
+        ssl    => { name => 'ssl',    version => Any },
+        crypto => { name => 'crypto', version => Any };
 
     my $prefix;
     if %*ENV<OPENSSL_PREFIX>:exists {
@@ -14,10 +25,26 @@ method build($cwd --> Bool) {
     }
     if $prefix {
         note "Using openssl prefix $prefix";
-        %libraries =
-            ssl    => $prefix.IO.child('lib').child('ssl').Str,
-            crypto => $prefix.IO.child('lib').child('crypto').Str,
-        ;
+        %libraries<ssl><name>    = $prefix.IO.child('lib').child('ssl').Str;
+        %libraries<crypto><name> = $prefix.IO.child('lib').child('crypto').Str;
+    }
+    else {
+        given $*VM.osname {
+            when 'linux' {
+                # Check if libssl.so.1.1 and libcrypto.so.1.1 are available.
+                my %libs = ldconfig-p();
+                my $version = v1.1;
+                for %libraries.values -> %library {
+                    my $name = $*VM.platform-library-name(
+                        %library<name>.IO,
+                        version => $version
+                    );
+                    if %libs{$name}:exists {
+                        %library<version> = $version;
+                    }
+                }
+            }
+        }
     }
 
     my $json = Rakudo::Internals::JSON.to-json: %libraries, :pretty, :sorted-keys;

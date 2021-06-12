@@ -2,22 +2,29 @@ unit module OpenSSL::NativeLib;
 
 my %libraries = Rakudo::Internals::JSON.from-json: %?RESOURCES<libraries.json>.slurp(:close);
 
+my sub library-name(%library, $dll) {
+    if $*DISTRO.is-win {
+        return dll-resource($dll);
+    }
+
+    my $name    = %library<name>.IO;
+    my $version = %library<version>;
+    if defined $version {
+        return $*VM.platform-library-name($name, version => Version($version)).Str;
+    }
+    return $*VM.platform-library-name($name).Str;
+}
+
 sub ssl-lib is export {
-    state $lib = $*DISTRO.is-win
-        ?? dll-resource('ssleay32.dll')
-        !! $*VM.platform-library-name(%libraries<ssl>.IO).Str;
+    state $lib = library-name(%libraries<ssl>, 'ssleay32.dll');
 }
 
 sub gen-lib is export {
-    state $lib = $*DISTRO.is-win
-        ?? dll-resource('libeay32.dll')
-        !! $*VM.platform-library-name(%libraries<ssl>.IO).Str;
+    state $lib = library-name(%libraries<ssl>, 'libeay32.dll');
 }
 
 sub crypto-lib is export {
-    state $lib = $*DISTRO.is-win
-        ?? dll-resource('libeay32.dll')
-        !! $*VM.platform-library-name(%libraries<crypto>.IO).Str;
+    state $lib = library-name(%libraries<crypto>, 'libeay32.dll');
 }
 
 # Windows only
